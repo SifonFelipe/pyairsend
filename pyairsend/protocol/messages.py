@@ -8,11 +8,13 @@ class MessageType(IntEnum):
     Available message types for the file transfer protocol.
     """
     HELLO = 1
-    FILE_OFFER = 2
-    FILE_ACCEPT = 3
-    FILE_REJECT = 4
-    FILE_CHUNK = 5  # data message
-    FILE_COMPLETE = 6
+    HELLO_ACCEPT = 2
+    HELLO_REJECT = 3
+    FILE_OFFER = 100
+    FILE_ACCEPT = 101
+    FILE_REJECT = 102
+    FILE_CHUNK = 103  # data message
+    FILE_COMPLETE = 104
 
 
 class MessageHeader:
@@ -54,6 +56,8 @@ CHUNK_HEADER = MessageHeader("!BII")  # Message type + Chunk number + Payload le
 
 HEADER_BY_MESSAGE_TYPE = {
     MessageType.HELLO: CONTROL_HEADER,
+    MessageType.HELLO_ACCEPT: CONTROL_HEADER,
+    MessageType.HELLO_REJECT: CONTROL_HEADER,
     MessageType.FILE_OFFER: CONTROL_HEADER,
     MessageType.FILE_ACCEPT: CONTROL_HEADER,
     MessageType.FILE_REJECT: CONTROL_HEADER,
