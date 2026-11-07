@@ -13,8 +13,8 @@ class MessageType(IntEnum):
     FILE_OFFER = 100
     FILE_ACCEPT = 101
     FILE_REJECT = 102
-    FILE_CHUNK = 103  # data message
-    FILE_COMPLETE = 104
+    FILE_COMPLETE = 103
+    FILE_CHUNK = 200  # data message
 
 
 class MessageHeader:

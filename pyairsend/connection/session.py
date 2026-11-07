@@ -2,13 +2,40 @@
 import socket
 from dataclasses import dataclass
 
+from pyairsend.transport.socket import receive_message, send_control
+from pyairsend.protocol.messages import MessageType
+
 
 @dataclass
 class ConnectionStatus:
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
+    NEGOTIATING = "negotiating"
+    READY = "ready"
 
+
+class PeerSessionError(Exception):
+    """ Base class for exceptions in PeerSession. """
+    pass
+
+
+class RejectedHandshake(PeerSessionError):
+    """ Exception raised when a handshake is rejected by the peer. """
+    pass
+
+
+class PeerIsNotAvailable(PeerSessionError):
+    """ Exception raised when the peer is not available for connection. """
+    pass
+
+
+class InvalidMessageType(PeerSessionError):
+    """ Exception raised when an unexpected message type is received. """
+    pass
+
+
+# TODO: FileReceiver and FileSender
 
 class PeerSession:
     def __init__(self, peer_address: str, peer_port: int):
@@ -23,7 +50,7 @@ class PeerSession:
 
     def assure_connected(self):
         if self.current_status != ConnectionStatus.CONNECTED:
-            raise Exception("PeerSession is not connected.")
+            raise PeerIsNotAvailable("PeerSession is not connected.")
 
     def connect(self):
         if self.current_status == ConnectionStatus.CONNECTED:
@@ -33,17 +60,54 @@ class PeerSession:
 
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+            self.sock.settimeout(10)  # (s) Set a timeout for the connection attempt
             self.sock.connect(self.address)
+            self.sock.settimeout(None)
+
             self.current_status = ConnectionStatus.CONNECTED
 
         except Exception as e:
             self.current_status = ConnectionStatus.DISCONNECTED
+
+            if self.sock is not None:
+                self.sock.close()
+
             raise e
 
     def handshake(self):
         self.assure_connected()
 
-        # Implement handshake logic here
+        # Send a HELLO message to the peer, await response
+        self.current_status = ConnectionStatus.NEGOTIATING
+        send_control(self.sock, MessageType.HELLO, "")
+
+        message = receive_message(self.sock)
+
+        if message.message_type == MessageType.HELLO_ACCEPT:
+            self.current_status = ConnectionStatus.READY
+
+        elif message.message_type == MessageType.HELLO_REJECT:
+            self.current_status = ConnectionStatus.CONNECTED
+            raise RejectedHandshake("Handshake rejected by peer.")
+
+        else:
+            self.current_status = ConnectionStatus.CONNECTED
+            raise InvalidMessageType("Unexpected message type received during handshake.")
+
+    def accept_handshake(self):
+        self.assure_connected()
+
+        # Implement logic to accept handshake from peer
+
+    def reject_handshake(self):
+        self.assure_connected()
+
+        # Implement logic to reject handshake from peer
+
+
+
+
 
 
 
