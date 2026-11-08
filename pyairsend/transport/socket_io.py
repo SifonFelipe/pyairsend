@@ -1,4 +1,5 @@
 """Message-oriented I/O for connected sockets."""
+import asyncio
 
 from pyairsend.protocol.messages import (
     MessageType,
@@ -13,40 +14,23 @@ from pyairsend.protocol.codec import (
 )
 
 
-# TODO: async version
-
-def receive_exactly(client, size: int) -> bytes:
-    """ receive exactly `size` bytes from the client socket """
-    data = bytearray()
-
-    while len(data) < size:
-        chunk = client.recv(size - len(data))
-
-        if chunk == b"":
-            raise ConnectionError("Socket connection broken")
-
-        data += chunk
-
-    return bytes(data)
-
-
-def receive_message(client):
+async def receive_message(reader: asyncio.StreamReader):
     """ receive a message from the client socket """
     # receive message_type
-    message_type_byte = receive_exactly(client, 1)
+    message_type_byte = await reader.readexactly(1)
     message_type = Decoder.decode_message_type(message_type_byte)
 
     # get the header for the message type
     header = get_header(message_type)
 
     # receive the rest of the header
-    remaining_header = receive_exactly(client, header.size_after_message_type())
+    remaining_header = await reader.readexactly(header.size_after_message_type())
 
     # decode according to message type
     if message_type == MessageType.FILE_CHUNK:
         chunk_number, payload_length = Decoder.decode_chunk_header(remaining_header)
 
-        payload = receive_exactly(client, payload_length)
+        payload = await reader.readexactly(payload_length)
 
         return ChunkMessage(
             message_type=message_type,
@@ -58,7 +42,7 @@ def receive_message(client):
     # elif header == CONTROL_HEADER:
     payload_length = Decoder.decode_control_header(remaining_header)
 
-    payload_bytes = receive_exactly(client, payload_length)
+    payload_bytes = await reader.readexactly(payload_length)
     payload = payload_bytes.decode(header.text_encoding)
 
     return ControlMessage(
@@ -68,15 +52,17 @@ def receive_message(client):
     )
 
 
-def send_control(client, message_type: MessageType, message: str):
+async def send_control(writer: asyncio.StreamWriter, message_type: MessageType, message: str):
     """ send a control message to the client socket """
     encoded = Encoder.encode_control(message_type, message)
 
-    client.sendall(encoded)
+    writer.write(encoded)
+    await writer.drain()
 
 
-def send_chunk(client, chunk_number: int, payload: bytes):
+async def send_chunk(writer: asyncio.StreamWriter, chunk_number: int, payload: bytes):
     """ send a chunk message to the client socket """
     encoded = Encoder.encode_chunk(chunk_number, payload)
 
-    client.sendall(encoded)
+    writer.write(encoded)
+    await writer.drain()
