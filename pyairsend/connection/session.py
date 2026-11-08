@@ -2,7 +2,7 @@
 import socket
 from dataclasses import dataclass
 
-from pyairsend.transport.socket import receive_message, send_control
+from pyairsend.transport.socket_io import receive_message, send_control
 from pyairsend.protocol.messages import MessageType
 
 
@@ -35,6 +35,7 @@ class InvalidMessageType(PeerSessionError):
     pass
 
 
+# TODO: pass to async
 # TODO: FileReceiver and FileSender
 
 class PeerSession:
@@ -95,19 +96,31 @@ class PeerSession:
             self.current_status = ConnectionStatus.CONNECTED
             raise InvalidMessageType("Unexpected message type received during handshake.")
 
+    def answer_handshake(self, *, accept):
+        self.assure_connected()
+
+        self.current_status = ConnectionStatus.NEGOTIATING
+
+        try:
+            if accept:
+                self.accept_handshake()
+            else:
+                self.reject_handshake()
+
+        except Exception as e:
+            self.current_status = ConnectionStatus.CONNECTED
+            raise e
+
+        return self.current_status == ConnectionStatus.READY
+
     def accept_handshake(self):
         self.assure_connected()
 
-        # Implement logic to accept handshake from peer
+        send_control(self.sock, MessageType.HELLO_ACCEPT, "")
+        self.current_status = ConnectionStatus.READY
 
     def reject_handshake(self):
         self.assure_connected()
 
-        # Implement logic to reject handshake from peer
-
-
-
-
-
-
-
+        send_control(self.sock, MessageType.HELLO_REJECT, "")
+        self.current_status = ConnectionStatus.CONNECTED

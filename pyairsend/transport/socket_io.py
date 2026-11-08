@@ -1,3 +1,5 @@
+"""Message-oriented I/O for connected sockets."""
+
 from pyairsend.protocol.messages import (
     MessageType,
     ControlMessage,
@@ -10,6 +12,8 @@ from pyairsend.protocol.codec import (
     Decoder,
 )
 
+
+# TODO: async version
 
 def receive_exactly(client, size: int) -> bytes:
     """ receive exactly `size` bytes from the client socket """
