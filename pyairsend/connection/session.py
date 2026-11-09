@@ -161,3 +161,8 @@ class PeerSession:
             raise InvalidMessageType("Expected HELLO message from peer.")
 
         self.current_status = ConnectionStatus.NEGOTIATING
+
+    async def receive_message(self):
+        """ Receive a message from the peer. """
+        self.assure_connected()
+        return await receive_message(self.reader)
