@@ -2,7 +2,11 @@ import asyncio
 import struct
 import unittest
 
-from pyairsend.protocol.messages import CHUNK_HEADER, MAX_MESSAGE_SIZE, MessageType
+from pyairsend.protocol.messages import (
+    CHUNK_HEADER,
+    MAX_CHUNK_PAYLOAD_SIZE,
+    MessageType
+)
 from pyairsend.transport.socket_io import receive_message, send_chunk, send_control
 
 
@@ -83,7 +87,7 @@ class SocketIOTests(unittest.IsolatedAsyncioTestCase):
                     CHUNK_HEADER.format,
                     MessageType.FILE_CHUNK.value,
                     0,
-                    MAX_MESSAGE_SIZE + 1,
+                    MAX_CHUNK_PAYLOAD_SIZE + 1,
                 )
             )
             await writer.drain()

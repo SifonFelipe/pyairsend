@@ -1,8 +1,7 @@
 import asyncio
 import sys
-from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, Slot, QObject
+from PySide6.QtCore import Signal, Slot, QObject
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -11,13 +10,17 @@ from PySide6.QtWidgets import (
     QListWidget,
     QStackedWidget,
     QLabel,
-    QListWidgetItem,
 )
-from qasync import QEventLoop, asyncSlot
+from qasync import QEventLoop
 
-from pyairsend.app.styling import TOP, LEFT, BOTTOM, RIGHT
+from pyairsend.app.styling import TOP, LEFT
 from pyairsend.app.pages import SendPage, TransfersPage, DevicesPage, SettingsPage
-from pyairsend.connection.server import PeerServer, PeerSession
+from pyairsend.connection.server import PeerServer, ServerStatus
+
+
+SERVER_HOST = "0.0.0.0"  # Listen on all available interfaces
+SERVER_PORT = 12345
+SHUTDOWN_TIMEOUT = 2.0  # seconds to wait for open connections on close
 
 
 class StatusOptions:
@@ -37,10 +40,35 @@ class MainWindow(QMainWindow):
     PAGES = ["Home", "Send", "Transfers", "Devices", "Settings"]
 
     def closeEvent(self, event):
-        """ Redefine closing event for async cleanup. """
-        loop = asyncio.get_event_loop()
-        loop.stop()
-        event.accept()
+        """
+        Redefine closing event for async cleanup.
+        The first close is ignored while the server and sessions shut down,
+        then _shutdown closes the window again for real.
+        """
+        if self._shutdown_done:
+            event.accept()
+            return
+
+        event.ignore()
+
+        if self._shutdown_task is None:
+            self._shutdown_task = asyncio.ensure_future(self._shutdown())
+
+    async def _shutdown(self):
+        """ Stop the server and close open sessions before quitting. """
+        try:
+            await self.devices_page.close_sessions()
+
+            if self.server is not None and self.server.status == ServerStatus.RUNNING:
+                # wait_closed() waits for open connections, so don't hang forever
+                await asyncio.wait_for(self.server.stop(), timeout=SHUTDOWN_TIMEOUT)
+
+        except (TimeoutError, OSError) as error:
+            print(f"Error during shutdown: {error}")
+
+        finally:
+            self._shutdown_done = True
+            self.close()
 
     def _set_sidebar(self):
         """ Set up the sidebar with the list of pages. """
@@ -91,9 +119,13 @@ class MainWindow(QMainWindow):
         """ Update the status bar with a new message. """
         self.status.setText(message)
 
+    def start_server(self):
+        """ Start the server in the background, keeping a reference to the task. """
+        self._server_task = asyncio.ensure_future(self._init_server())
+
     async def _init_server(self):
         """ Initialize the server for receiving connections. """
-        self.server = PeerServer()
+        self.server = PeerServer(SERVER_HOST, SERVER_PORT)
 
         try:
             await self.server.start()
@@ -101,25 +133,18 @@ class MainWindow(QMainWindow):
             self.status_signal.update_status.emit(f"Error starting server: {error}")
             return
 
-        asyncio.create_task(self._monitor_server_status())
-
-    async def _monitor_server_status(self):
-        """ Monitor the server status and update the status bar accordingly. """
-
-        while True:
-            if self.server.status == PeerServer.ServerStatus.RUNNING:
-                self.status_signal.update_status.emit(StatusOptions.SERVER_RUNNING)
-
-            elif self.server.status == PeerServer.ServerStatus.FAILED:
-                self.status_signal.update_status.emit(StatusOptions.ERROR)
-
-            await asyncio.sleep(5)  # Check every second
+        self.status_signal.update_status.emit(StatusOptions.SERVER_RUNNING)
 
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("PyAirSend")
         self.resize(800, 600)
+
+        self.server = None
+        self._server_task = None
+        self._shutdown_task = None
+        self._shutdown_done = False
 
         # sidebar and stacked content
         self._set_sidebar()
@@ -142,10 +167,12 @@ def run_app():
     window = MainWindow()
     window.show()
 
-    loop.create_task(window._init_server())  # Start the server in the background
+    window.start_server()
 
     # Get the path to the assets directory
     # assets_dir = Path(__file__).parent / "assets"
+    # WARNING: files should not resolve outside the package directory for security reasons
+
     with loop:
         loop.run_forever()
 

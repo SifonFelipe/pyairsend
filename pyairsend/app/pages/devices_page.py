@@ -1,3 +1,5 @@
+import asyncio
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel,
     QLineEdit, QPushButton
@@ -5,7 +7,7 @@ from PySide6.QtWidgets import (
 from qasync import asyncSlot
 
 from pyairsend.app.styling import TOP, LEFT
-from pyairsend.connection.session import PeerSession
+from pyairsend.connection.session import PeerSession, PeerSessionError
 
 
 class DevicesPage(QWidget):
@@ -30,32 +32,78 @@ class DevicesPage(QWidget):
         self.device_port = QLineEdit(placeholderText="Enter device port")
 
         self.add_device_button = QPushButton("Add Device")
-        self.add_device_button.clicked.connect(self.test)
+        self.add_device_button.clicked.connect(self.add_device)
+
+        self.add_device_status = QLabel()
 
         layout.addWidget(self.device_ip)
         layout.addWidget(self.device_port)
         layout.addWidget(self.add_device_button)
+        layout.addWidget(self.add_device_status)
 
     def __init__(self):
         super().__init__()
+
+        self.sessions: dict[tuple[str, int], PeerSession] = {}
 
         self._set_add_devices_section()
 
         # TODO: list devices stored in the app, and discovered devices
         self._set_layout()
 
-    @asyncSlot()
-    async def test(self):
-        ip = self.device_ip.text()
-        port = self.device_port.text()
+    def _parse_device_address(self) -> tuple[str, int]:
+        """ Read and validate the IP and port fields. """
+        ip = self.device_ip.text().strip()
+        port = self.device_port.text().strip()
 
         if not ip or not port:
             raise ValueError("IP address and port must be provided.")
 
-        device_info = f"{ip}:{port}"
-        print("Attempting to add device:", device_info)
+        if not port.isdigit() or not 0 < int(port) < 65536:
+            raise ValueError("Port must be a number between 1 and 65535.")
 
-        device_session = PeerSession(ip, int(port))
+        return ip, int(port)
 
-        await device_session.connect()  # Attempt to connect to the device
-        await device_session.send_handshake() # Send handshake to the device
+    @asyncSlot()
+    async def add_device(self):
+        try:
+            ip, port = self._parse_device_address()
+        except ValueError as error:
+            self.add_device_status.setText(str(error))
+            return
+
+        self.add_device_status.setText(f"Connecting to {ip}:{port}...")
+        self.add_device_button.setEnabled(False)  # avoid double clicks while connecting
+
+        device_session = PeerSession(ip, port)
+
+        try:
+            await device_session.connect()  # Attempt to connect to the device
+            await asyncio.wait_for(device_session.send_handshake(), timeout=5.0)
+
+        except (OSError, TimeoutError, asyncio.IncompleteReadError, PeerSessionError) as error:
+            await device_session.close()
+            self.add_device_status.setText(f"Could not add {ip}:{port}: {error or type(error).__name__}")
+            return
+
+        finally:
+            self.add_device_button.setEnabled(True)
+
+        # replace any previous session to the same device
+        previous = self.sessions.pop(device_session.address, None)
+        if previous is not None:
+            await previous.close()
+
+        self.sessions[device_session.address] = device_session
+        self.add_device_status.setText(f"Connected to {ip}:{port}")
+
+    async def close_sessions(self):
+        """ Close every open session, used when the app quits. """
+        sessions = list(self.sessions.values())
+        self.sessions.clear()
+
+        for session in sessions:
+            try:
+                await session.close()
+            except OSError:
+                pass  # peer already gone

@@ -4,15 +4,16 @@ from pyairsend.protocol.messages import (
     MessageType,
     CONTROL_HEADER,
     CHUNK_HEADER,
-    MAX_MESSAGE_SIZE
+    MAX_CHUNK_PAYLOAD_SIZE,
+    MAX_CONTROL_PAYLOAD_SIZE,
 )
 
 
-def assert_message_size(payload_length):
-    if payload_length > MAX_MESSAGE_SIZE:
+def assert_message_size(payload_length, msg_payload_limit):
+    if payload_length > msg_payload_limit:
         raise ValueError(
             f"Payload size exceeds maximum allowed size "
-            f"of {MAX_MESSAGE_SIZE} bytes."
+            f"of {msg_payload_limit} bytes."
         )
 
 
@@ -54,7 +55,7 @@ class Decoder:
             header
         )[0]
 
-        assert_message_size(payload_length)
+        assert_message_size(payload_length, MAX_CONTROL_PAYLOAD_SIZE)
 
         return payload_length
 
@@ -65,6 +66,6 @@ class Decoder:
             header
         )
 
-        assert_message_size(payload_length)
+        assert_message_size(payload_length, MAX_CHUNK_PAYLOAD_SIZE)
 
         return chunk_number, payload_length

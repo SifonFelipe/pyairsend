@@ -38,14 +38,14 @@ class MessageHeader:
 
 @dataclass
 class ControlMessage:
-    message_type: int
+    message_type: MessageType
     payload_length: int
     payload: str
 
 
 @dataclass
 class ChunkMessage:
-    message_type: int
+    message_type: MessageType
     chunk_number: int
     payload_length: int
     payload: bytes
@@ -65,7 +65,8 @@ HEADER_BY_MESSAGE_TYPE = {
     MessageType.FILE_COMPLETE: CONTROL_HEADER,
 }
 
-MAX_MESSAGE_SIZE = 100 * 1024 * 1024
+MAX_CONTROL_PAYLOAD_SIZE = 64 * 1024  # 64kb
+MAX_CHUNK_PAYLOAD_SIZE = 10 * 1024 * 1024  # 10mb
 
 
 def get_header(message_type: MessageType) -> MessageHeader:

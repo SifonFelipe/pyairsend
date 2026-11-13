@@ -14,6 +14,18 @@ class ConnectionStatus(StrEnum):
     READY = "ready"
 
 
+CONNECTED_STATUSES = {
+    ConnectionStatus.CONNECTED,
+    ConnectionStatus.NEGOTIATING,
+    ConnectionStatus.READY
+}
+
+DISCONNECTED_STATUSES = {
+    ConnectionStatus.DISCONNECTED,
+    ConnectionStatus.CONNECTING
+}
+
+
 class PeerSessionError(Exception):
     """ Base class for exceptions in PeerSession. """
     pass
@@ -37,6 +49,10 @@ class InvalidMessageType(PeerSessionError):
 # TODO: FileReceiver and FileSender
 
 class PeerSession:
+    """
+    Represents a session with a peer,
+    managing the connection state and communication.
+    """
     def __init__(self, peer_address: str, peer_port: int):
         self.peer_address = peer_address
         self.peer_port = peer_port
@@ -70,7 +86,7 @@ class PeerSession:
         Assures that the session is connected
         before performing operations that require a connection.
         """
-        if self.current_status in [ConnectionStatus.DISCONNECTED, ConnectionStatus.CONNECTING] or \
+        if self.current_status in DISCONNECTED_STATUSES or \
             self.reader is None or self.writer is None:
             raise PeerIsNotAvailable("PeerSession is not connected.")
 
@@ -86,7 +102,7 @@ class PeerSession:
 
     async def connect(self):
         """ Establishes a connection to the peer. """
-        if self.current_status == ConnectionStatus.CONNECTED:
+        if self.current_status in CONNECTED_STATUSES:
             return  # Already connected
 
         self.current_status = ConnectionStatus.CONNECTING

@@ -5,7 +5,7 @@ from pyairsend.protocol.codec import Decoder, Encoder
 from pyairsend.protocol.messages import (
     CHUNK_HEADER,
     CONTROL_HEADER,
-    MAX_MESSAGE_SIZE,
+    MAX_CONTROL_PAYLOAD_SIZE,
     MessageType,
 )
 
@@ -36,7 +36,7 @@ class EncoderDecoderTests(unittest.TestCase):
         self.assertEqual(encoded[CHUNK_HEADER.size :], payload)
 
     def test_control_header_rejects_an_oversized_payload(self):
-        header = struct.pack("!I", MAX_MESSAGE_SIZE + 1)
+        header = struct.pack("!I", MAX_CONTROL_PAYLOAD_SIZE + 1)
 
         with self.assertRaises(ValueError):
             Decoder.decode_control_header(header)

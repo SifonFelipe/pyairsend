@@ -1,24 +1,26 @@
 import asyncio
+from enum import StrEnum
 
 from pyairsend.connection.session import PeerSession
 
 
-class PeerServer:
-    host = "0.0.0.0"  # Listen on all available interfaces
-    port = 12345  # Default port for the server
-    address = f"{host}:{port}"
-    status = "stopped"
+class ServerStatus(StrEnum):
+    STARTING = "starting"
+    RUNNING = "running"
+    STOPPED = "stopped"
+    FAILED = "failed"
 
-    class ServerStatus:
-        STARTING = "starting"
-        RUNNING = "running"
-        STOPPED = "stopped"
-        FAILED = "failed"
+
+class PeerServer:
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self.address = f"{host}:{port}"
+        self.status = ServerStatus.STOPPED
 
     async def start(self):
         """Start the server to listen for incoming connections."""
-
-        self.status = self.ServerStatus.STARTING
+        self.status = ServerStatus.STARTING
 
         try:
             self.server = await asyncio.start_server(
@@ -28,23 +30,29 @@ class PeerServer:
             )
 
         except Exception as e:
-            self.status = self.ServerStatus.FAILED
+            self.status = ServerStatus.FAILED
             raise e
 
-        self.status = self.ServerStatus.RUNNING
+        self.status = ServerStatus.RUNNING
 
     async def stop(self):
         """ Stop the server and close all connections """
         self.server.close()
-        self.status = self.ServerStatus.STOPPED
+        self.status = ServerStatus.STOPPED
 
         await self.server.wait_closed()
 
     async def _handle_connection(self, reader, writer):
-        session = PeerSession.from_streams(reader, writer)
+        session = None
 
         try:
-            await session.receive_handshake()
+            session = PeerSession.from_streams(reader, writer)
+
+            await asyncio.wait_for(
+                session.receive_handshake(),
+                timeout=5.0
+            )
+
             # TODO: notify controller/UI about this ready peer
 
             accepted = True  # TODO: Implement UI logic to accept or reject the handshake
@@ -53,13 +61,21 @@ class PeerServer:
             if not accepted:
                 return
 
-            print(f"Handshake accepted from {session.peer_address}:{session.peer_port}. Session is ready.")
+            print(
+                f"Handshake accepted from {session.peer_address}:{session.peer_port}. "
+                "Session is ready."
+            )
+
             await self._handle_ready_session(session)
 
             # TODO: wait for file offer and pass it to file receiver
 
+        except Exception as e:
+            raise
+
         finally:
-            await session.close()
+            if session is not None:
+                await session.close()
 
     async def _handle_ready_session(self, session: PeerSession):
         """Handle a session that has completed the handshake and is ready for communication."""
